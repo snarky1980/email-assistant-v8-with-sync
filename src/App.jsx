@@ -1420,11 +1420,11 @@ function App() {
 
   // Load a selected template
   useEffect(() => {
-    if (selectedTemplate) {
+    if (selectedTemplate && templatesData) {
       // Initialize variables with example/default values
       const initialVars = {}
       selectedTemplate.variables.forEach(varName => {
-        const varInfo = templatesData.variables[varName]
+        const varInfo = templatesData.variables?.[varName]
         if (varInfo) {
           initialVars[varName] = varInfo.example || ''
         }
@@ -1445,7 +1445,7 @@ function App() {
       setFinalSubject('')
       setFinalBody('')
     }
-  }, [selectedTemplate, templateLanguage, interfaceLanguage])
+  }, [selectedTemplate, templateLanguage, interfaceLanguage, templatesData])
 
   // Update final versions when variables change
   // IMPORTANT: Only replace <<VarName>> placeholders in CURRENT text
