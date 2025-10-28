@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Edit3, X } from 'lucide-react'
+import { Edit3, X, RefreshCw } from 'lucide-react'
 
 /**
  * Standalone Variables Editor Popout Window
@@ -16,6 +16,8 @@ export default function VariablesPopout({
 }) {
   const [variables, setVariables] = useState(initialVariables || {})
   const [focusedVar, setFocusedVar] = useState(null)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState(null)
   const channelRef = useRef(null)
   const varInputRefs = useRef({})
 
@@ -25,10 +27,23 @@ export default function VariablesPopout({
       const channel = new BroadcastChannel('email-assistant-sync')
       channelRef.current = channel
 
-      // Listen for variable updates from main window
+      // Listen for messages from main window
       channel.onmessage = (event) => {
         if (event.data.type === 'variablesUpdated') {
           setVariables(event.data.variables)
+        }
+        
+        // Handle sync completion
+        if (event.data.type === 'syncComplete') {
+          setIsSyncing(false)
+          if (event.data.success) {
+            setVariables(event.data.variables)
+            setSyncStatus('success')
+            setTimeout(() => setSyncStatus(null), 2000)
+          } else {
+            setSyncStatus('no-changes')
+            setTimeout(() => setSyncStatus(null), 2000)
+          }
         }
       }
 
@@ -57,6 +72,25 @@ export default function VariablesPopout({
       } catch (e) {
         console.error('Failed to send variable update:', e)
       }
+    }
+  }
+  
+  // Request sync from text areas in main window
+  const handleSyncFromText = () => {
+    if (!channelRef.current) return
+    
+    setIsSyncing(true)
+    setSyncStatus(null)
+    
+    try {
+      channelRef.current.postMessage({
+        type: 'syncFromText'
+      })
+    } catch (e) {
+      console.error('Failed to request sync:', e)
+      setIsSyncing(false)
+      setSyncStatus('error')
+      setTimeout(() => setSyncStatus(null), 2000)
     }
   }
 
@@ -89,12 +123,22 @@ export default function VariablesPopout({
     title: 'Modifier les variables',
     resetExample: 'Remettre l\'exemple',
     clear: 'Effacer',
-    close: 'Fermer'
+    close: 'Fermer',
+    syncFromText: 'Synchroniser depuis le texte',
+    syncing: 'Synchronisation...',
+    syncSuccess: 'Synchronis\u00e9 !',
+    syncNoChanges: 'Aucun changement',
+    syncError: 'Erreur'
   } : {
     title: 'Edit Variables',
     resetExample: 'Reset to example',
     clear: 'Clear',
-    close: 'Close'
+    close: 'Close',
+    syncFromText: 'Sync from text',
+    syncing: 'Syncing...',
+    syncSuccess: 'Synced!',
+    syncNoChanges: 'No changes',
+    syncError: 'Error'
   }
 
   return (
@@ -107,10 +151,26 @@ export default function VariablesPopout({
           borderBottom: '3px solid rgba(139, 195, 74, 0.3)'
         }}
       >
-        <div className="flex items-center">
-          <Edit3 className="h-5 w-5 mr-2 text-white" />
-          <h1 className="text-lg font-bold text-white">{t.title}</h1>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center">
+            <Edit3 className="h-5 w-5 mr-2 text-white" />
+            <h1 className="text-lg font-bold text-white">{t.title}</h1>
+          </div>
+          
+          {/* Sync from text button */}
+          <button
+            onClick={handleSyncFromText}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={t.syncFromText}
+          >
+            <RefreshCw className={`h-4 w-4 text-white ${isSyncing ? 'animate-spin' : ''}`} />
+            <span className="text-sm font-semibold text-white">
+              {isSyncing ? t.syncing : syncStatus === 'success' ? t.syncSuccess : syncStatus === 'no-changes' ? t.syncNoChanges : syncStatus === 'error' ? t.syncError : t.syncFromText}
+            </span>
+          </button>
         </div>
+        
         <button
           onClick={() => window.close()}
           className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"

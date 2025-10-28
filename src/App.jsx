@@ -680,6 +680,23 @@ function App() {
         if (msg.type === 'variableChanged' && msg.allVariables) {
           setVariables(msg.allVariables)
         }
+        
+        // Handle sync request from popout
+        if (msg.type === 'syncFromText') {
+          console.log('🔄 Received syncFromText request from popout')
+          const success = syncFromText()
+          
+          // Send back the result
+          try {
+            channel.postMessage({
+              type: 'syncComplete',
+              success: success,
+              variables: variables
+            })
+          } catch (e) {
+            console.error('Failed to send sync result:', e)
+          }
+        }
       }
       
       return () => {
@@ -1362,23 +1379,25 @@ function App() {
 
     const extracted = {}
     
-    // Process subject
-    if (selectedTemplate.subject && subject) {
-      const subjectTemplate = selectedTemplate.subject
+    // Get the template text for the current language
+    const subjectTemplate = selectedTemplate.subject[templateLanguage] || ''
+    const bodyTemplate = selectedTemplate.body[templateLanguage] || ''
+    
+    // Process subject - extract from finalSubject
+    if (subjectTemplate && finalSubject) {
       selectedTemplate.variables.forEach(varName => {
         if (subjectTemplate.includes(`<<${varName}>>`)) {
-          const value = extractValueFromText(subject, subjectTemplate, varName)
+          const value = extractValueFromText(finalSubject, subjectTemplate, varName)
           if (value !== null) extracted[varName] = value
         }
       })
     }
     
-    // Process body  
-    if (selectedTemplate.body && body) {
-      const bodyTemplate = selectedTemplate.body
+    // Process body - extract from finalBody
+    if (bodyTemplate && finalBody) {
       selectedTemplate.variables.forEach(varName => {
         if (bodyTemplate.includes(`<<${varName}>>`)) {
-          const value = extractValueFromText(body, bodyTemplate, varName)
+          const value = extractValueFromText(finalBody, bodyTemplate, varName)
           if (value !== null) extracted[varName] = value
         }
       })
@@ -1390,54 +1409,99 @@ function App() {
     if (Object.keys(extracted).length > 0) {
       setVariables(prev => ({ ...prev, ...extracted }))
       console.log('🔄 Variables updated successfully')
+      return true // Indicate success
     } else {
       console.log('🔄 No values extracted')
+      return false // Indicate no changes
     }
   }
   
   // Helper function to extract a variable value from text
+  // This function attempts to find where a variable's value is in the edited text
+  // by using the surrounding literal text as anchors
   const extractValueFromText = (text, templateText, varName) => {
     try {
       const varPlaceholder = `<<${varName}>>`
       const varIndex = templateText.indexOf(varPlaceholder)
       
-      if (varIndex === -1) return null
+      if (varIndex === -1) {
+        console.log(`🔄 Variable ${varName} not found in template`)
+        return null
+      }
       
-      // Find literal text before the variable
+      // Strategy 1: Try to find literal text anchors around the variable
+      // Get text before the variable (up to 50 chars or previous variable)
       const beforeText = templateText.substring(0, varIndex)
-      const lastNewlineIndex = beforeText.lastIndexOf('\n')
-      const beforeLiteral = lastNewlineIndex === -1 
-        ? beforeText 
-        : beforeText.substring(lastNewlineIndex + 1)
+      const beforeVarMatch = beforeText.match(/<<[^>]+>>(?!.*<<[^>]+>>)/)
+      const beforeAnchorStart = beforeVarMatch ? beforeVarMatch.index + beforeVarMatch[0].length : Math.max(0, varIndex - 50)
+      const beforeAnchor = templateText.substring(beforeAnchorStart, varIndex).trim()
       
-      // Find literal text after the variable  
+      // Get text after the variable (up to 50 chars or next variable)
       const afterStart = varIndex + varPlaceholder.length
       const afterText = templateText.substring(afterStart)
-      const nextNewlineIndex = afterText.indexOf('\n')
-      const afterLiteral = nextNewlineIndex === -1
-        ? afterText
-        : afterText.substring(0, nextNewlineIndex)
+      const afterVarMatch = afterText.match(/<<[^>]+>>/)
+      const afterAnchorEnd = afterVarMatch ? afterVarMatch.index : Math.min(afterText.length, 50)
+      const afterAnchor = templateText.substring(afterStart, afterStart + afterAnchorEnd).trim()
       
-      // Find positions in actual text
+      console.log(`🔄 Extracting ${varName} with anchors:`, {
+        before: beforeAnchor.substring(0, 30),
+        after: afterAnchor.substring(0, 30)
+      })
+      
+      // Find the variable value in the actual text using anchors
       let startPos = 0
-      if (beforeLiteral.trim()) {
-        startPos = text.indexOf(beforeLiteral)
-        if (startPos === -1) return null
-        startPos += beforeLiteral.length
-      }
-      
       let endPos = text.length
-      if (afterLiteral.trim()) {
-        endPos = text.indexOf(afterLiteral, startPos)
-        if (endPos === -1) return null
+      
+      // Find start position using before anchor
+      if (beforeAnchor) {
+        const beforeIndex = text.indexOf(beforeAnchor)
+        if (beforeIndex !== -1) {
+          startPos = beforeIndex + beforeAnchor.length
+        } else {
+          // Try with partial match (first 20 chars of anchor)
+          const partialBefore = beforeAnchor.substring(Math.max(0, beforeAnchor.length - 20))
+          const partialIndex = text.indexOf(partialBefore)
+          if (partialIndex !== -1) {
+            startPos = partialIndex + partialBefore.length
+          } else {
+            console.log(`🔄 Could not find before anchor for ${varName}`)
+            return null
+          }
+        }
       }
       
+      // Find end position using after anchor
+      if (afterAnchor) {
+        const afterIndex = text.indexOf(afterAnchor, startPos)
+        if (afterIndex !== -1) {
+          endPos = afterIndex
+        } else {
+          // Try with partial match (first 20 chars of anchor)
+          const partialAfter = afterAnchor.substring(0, 20)
+          const partialIndex = text.indexOf(partialAfter, startPos)
+          if (partialIndex !== -1) {
+            endPos = partialIndex
+          } else {
+            console.log(`🔄 Could not find after anchor for ${varName}, using end of text`)
+            // Use end of text if no after anchor found
+          }
+        }
+      }
+      
+      // Extract and clean the value
       const extracted = text.substring(startPos, endPos).trim()
-      console.log(`🔄 Extracted ${varName}: "${extracted}"`)
+      
+      // Don't return empty values or the placeholder itself
+      if (!extracted || extracted === varPlaceholder) {
+        console.log(`🔄 No value found for ${varName}`)
+        return null
+      }
+      
+      console.log(`🔄 Extracted ${varName}: "${extracted.substring(0, 50)}${extracted.length > 50 ? '...' : ''}"`)
       return extracted
       
     } catch (error) {
-      console.warn(`Error extracting ${varName}:`, error)
+      console.warn(`🔄 Error extracting ${varName}:`, error)
       return null
     }
   }
