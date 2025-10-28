@@ -302,6 +302,29 @@ const HighlightingEditor = ({
 
       // Immediately call onChange - this is normal editing behavior
       onChange({ target: { value: newText } })
+      
+      // Re-apply highlighting after a short delay to maintain visibility
+      setTimeout(() => {
+        if (editableRef.current && !isInternalUpdateRef.current) {
+          const currentText = extractText(editableRef.current)
+          const highlightedHtml = buildHighlightedHTML(currentText)
+          
+          // Only update if highlighting is actually different
+          if (editableRef.current.innerHTML !== highlightedHtml && highlightedHtml.includes('<mark')) {
+            isInternalUpdateRef.current = true
+            const cursorPos = saveCursorPosition()
+            editableRef.current.innerHTML = highlightedHtml
+            
+            requestAnimationFrame(() => {
+              restoreCursorPosition(cursorPos)
+              isInternalUpdateRef.current = false
+              isUserTypingRef.current = false
+            })
+          } else {
+            isUserTypingRef.current = false
+          }
+        }
+      }, 100)
     }
   }
 
