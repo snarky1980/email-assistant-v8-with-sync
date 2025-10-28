@@ -1454,13 +1454,23 @@ function App() {
     if (selectedTemplate && !varsRemoteUpdateRef.current) {
       // Use functional updates to get the latest state values
       setFinalSubject(currentSubject => {
-        const updatedSubject = replaceVariables(currentSubject)
-        return updatedSubject !== currentSubject ? updatedSubject : currentSubject
+        // Inline replace logic to avoid stale closure
+        let result = currentSubject
+        Object.entries(variables).forEach(([varName, value]) => {
+          const regex = new RegExp(`<<${varName}>>`, 'g')
+          result = result.replace(regex, value || `<<${varName}>>`)
+        })
+        return result !== currentSubject ? result : currentSubject
       })
       
       setFinalBody(currentBody => {
-        const updatedBody = replaceVariables(currentBody)
-        return updatedBody !== currentBody ? updatedBody : currentBody
+        // Inline replace logic to avoid stale closure
+        let result = currentBody
+        Object.entries(variables).forEach(([varName, value]) => {
+          const regex = new RegExp(`<<${varName}>>`, 'g')
+          result = result.replace(regex, value || `<<${varName}>>`)
+        })
+        return result !== currentBody ? result : currentBody
       })
     }
     // Reset the remote update flag after processing

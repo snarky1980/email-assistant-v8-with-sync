@@ -390,36 +390,33 @@ const HighlightingEditor = ({
       return
     }
 
-    // If user is typing, debounce the highlighting to avoid interrupting
+    // If user is typing, apply highlights immediately but carefully
+    // SPEC REQUIREMENT: Highlighting must remain visible during typing
     if (isUserTypingRef.current) {
-      console.log('🔧 User typing - debouncing highlight update')
-      lastValueRef.current = value
+      console.log('🔧 User typing - applying highlights immediately')
+      
+      // Apply highlights immediately to keep them visible
+      const textToRender = value || ''
+      const newHtml = buildHighlightedHTML(textToRender)
 
-      // Set a short timer to apply highlights after user stops typing
-      const timerId = setTimeout(() => {
-        isUserTypingRef.current = false
-        // Re-apply highlights after user stops
-        if (editableRef.current) {
-          const textToRender = value || ''
-          const newHtml = buildHighlightedHTML(textToRender)
+      if (editableRef.current.innerHTML !== newHtml) {
+        isInternalUpdateRef.current = true
+        const cursorPos = saveCursorPosition()
+        editableRef.current.innerHTML = newHtml
+        lastValueRef.current = textToRender
 
-          if (editableRef.current.innerHTML !== newHtml) {
-            isInternalUpdateRef.current = true
-            const cursorPos = saveCursorPosition()
-            editableRef.current.innerHTML = newHtml
-            lastValueRef.current = textToRender
-
-            requestAnimationFrame(() => {
-              restoreCursorPosition(cursorPos)
-              setTimeout(() => {
-                isInternalUpdateRef.current = false
-              }, 50)
-            })
-          }
-        }
-      }, 300) // 300ms debounce
-
-      return () => clearTimeout(timerId)
+        requestAnimationFrame(() => {
+          restoreCursorPosition(cursorPos)
+          setTimeout(() => {
+            isInternalUpdateRef.current = false
+            isUserTypingRef.current = false  // Reset flag after update
+          }, 50)
+        })
+      } else {
+        isUserTypingRef.current = false  // Reset if no change needed
+      }
+      
+      return
     }
 
     const hasVars = Object.keys(variables).length > 0
