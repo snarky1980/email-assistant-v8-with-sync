@@ -1448,7 +1448,7 @@ function App() {
       setFinalSubject('')
       setFinalBody('')
     }
-  }, [selectedTemplate, templateLanguage, interfaceLanguage, templatesData])
+  }, [selectedTemplate, templateLanguage, interfaceLanguage])
 
   // Update final versions when variables change
   // IMPORTANT: Only replace <<VarName>> placeholders in CURRENT text
