@@ -16,7 +16,18 @@ class ErrorBoundary extends React.Component {
       error: error,
       errorInfo: errorInfo
     });
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error('=== ERROR BOUNDARY CAUGHT ERROR ===');
+    console.error('Error:', error);
+    console.error('Error message:', error?.message);
+    console.error('Error stack:', error?.stack);
+    console.error('Component stack:', errorInfo?.componentStack);
+    console.error('===================================');
+    // Also try to alert in production
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        alert(`ERROR: ${error?.message}\n\nCheck console for details`);
+      }, 100);
+    }
   }
 
   render() {
