@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename)
 
 export default defineConfig(({ mode }) => {
   // For gh-pages deployment, use repository name as base path in production
-  const base = mode === 'production' ? '/email-assistant-v8-fixed/' : '/';
+  const base = mode === 'production' ? '/email-assistant-v8-clean/' : '/';
   const writeTemplatesPlugin = {
     name: 'write-templates-plugin',
     apply: 'serve', // dev only
