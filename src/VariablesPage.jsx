@@ -26,7 +26,7 @@ export default function VariablesPage() {
     // Load templates data
     const loadData = async () => {
       try {
-        const response = await fetch('./templates.json')
+        const response = await fetch('./complete_email_templates.json')
         const data = await response.json()
         setTemplatesData(data)
 
