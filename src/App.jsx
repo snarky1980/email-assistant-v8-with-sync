@@ -1451,36 +1451,14 @@ function App() {
   }, [selectedTemplate, templateLanguage, interfaceLanguage])
 
   // Update final versions when variables change
-  // IMPORTANT: Only replace <<VarName>> placeholders in CURRENT text
-  // Do NOT revert to template - preserve user's manual edits
   useEffect(() => {
-    if (selectedTemplate && !varsRemoteUpdateRef.current) {
-      // Use functional updates to get the latest state values
-      setFinalSubject(currentSubject => {
-        // Inline replace logic to avoid stale closure
-        let result = currentSubject
-        Object.entries(variables).forEach(([varName, value]) => {
-          const regex = new RegExp(`<<${varName}>>`, 'g')
-          result = result.replace(regex, value || `<<${varName}>>`)
-        })
-        return result !== currentSubject ? result : currentSubject
-      })
-      
-      setFinalBody(currentBody => {
-        // Inline replace logic to avoid stale closure
-        let result = currentBody
-        Object.entries(variables).forEach(([varName, value]) => {
-          const regex = new RegExp(`<<${varName}>>`, 'g')
-          result = result.replace(regex, value || `<<${varName}>>`)
-        })
-        return result !== currentBody ? result : currentBody
-      })
+    if (selectedTemplate) {
+      const subjectWithVars = replaceVariables(selectedTemplate.subject[templateLanguage] || '')
+      const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || '')
+      setFinalSubject(subjectWithVars)
+      setFinalBody(bodyWithVars)
     }
-    // Reset the remote update flag after processing
-    if (varsRemoteUpdateRef.current) {
-      varsRemoteUpdateRef.current = false
-    }
-  }, [variables, selectedTemplate])
+  }, [variables, selectedTemplate, templateLanguage])
 
   /**
    * GRANULAR COPY FUNCTION
