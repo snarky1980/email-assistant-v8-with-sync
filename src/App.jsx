@@ -364,7 +364,10 @@ function App() {
   const [showVariablePopup, setShowVariablePopup] = useState(false)
   const [showAIPanel, setShowAIPanel] = useState(false)
   const [preferPopout, setPreferPopout] = useState(() => {
-    try { return localStorage.getItem('ea_prefer_popout') === 'true' } catch { return false }
+    try { 
+      const saved = localStorage.getItem('ea_prefer_popout')
+      return saved === null ? true : saved === 'true' // Default to true (popout) if not set
+    } catch { return true }
   })
   const [showHighlights, setShowHighlights] = useState(() => {
     const saved = localStorage.getItem('ea_show_highlights')
