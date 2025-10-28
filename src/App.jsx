@@ -1017,7 +1017,7 @@ function App() {
           if (templatesData?.variables) {
             const initialVars = {}
             selectedTemplate.variables.forEach(varName => {
-              const varInfo = templatesData.variables[varName]
+              const varInfo = templatesData.variables?.[varName]
               if (varInfo) initialVars[varName] = varInfo.example || ''
             })
             setVariables(prev => ({ ...prev, ...initialVars }))
@@ -1679,10 +1679,10 @@ function App() {
   }
 
   const confirmReset = () => {
-    if (selectedTemplate) {
+    if (selectedTemplate && templatesData) {
       const initialVars = {}
       selectedTemplate.variables.forEach(varName => {
-        const varInfo = templatesData.variables[varName]
+        const varInfo = templatesData.variables?.[varName]
         if (varInfo) {
           initialVars[varName] = varInfo.example || ''
         }
