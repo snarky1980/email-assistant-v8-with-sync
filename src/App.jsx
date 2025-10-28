@@ -777,7 +777,7 @@ function App() {
     if (!showVariablePopup || varsMinimized) return
     const t = setTimeout(() => {
       try {
-        if (!selectedTemplate) return
+        if (!selectedTemplate || !selectedTemplate.variables || selectedTemplate.variables.length === 0) return
         // find first empty variable by template order
         const firstEmpty = selectedTemplate.variables.find(vn => !(variables[vn] || '').trim()) || selectedTemplate.variables[0]
         const el = varInputRefs.current[firstEmpty]
