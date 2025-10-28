@@ -666,6 +666,34 @@ function App() {
     } catch {}
   }, [])
 
+  // Listen for variable updates from the new Variables popout window
+  useEffect(() => {
+    if (!canUseBC) return
+    try {
+      const channel = new BroadcastChannel('email-assistant-sync')
+      
+      channel.onmessage = (event) => {
+        const msg = event.data
+        if (!msg) return
+        
+        // Handle variable changes from popout
+        if (msg.type === 'variableChanged' && msg.allVariables) {
+          setVariables(msg.allVariables)
+        }
+      }
+      
+      return () => {
+        try {
+          channel.close()
+        } catch (e) {
+          console.error('Error closing BroadcastChannel:', e)
+        }
+      }
+    } catch (e) {
+      console.error('BroadcastChannel not available:', e)
+    }
+  }, [])
+
   // Emit updates when local variables change (avoid echo loops) with debouncing
   useEffect(() => {
     if (!canUseBC) return
@@ -2197,7 +2225,34 @@ function App() {
 	                      {selectedTemplate && selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
                           <>
                             <Button
-                              onClick={openVariables}
+                              onClick={() => {
+                                // Open variables in new popout window
+                                const url = new URL(window.location.href)
+                                url.searchParams.set('varsOnly', '1')
+                                if (selectedTemplate?.id) url.searchParams.set('id', selectedTemplate.id)
+                                if (templateLanguage) url.searchParams.set('lang', templateLanguage)
+                                
+                                // Calculate window size based on number of variables
+                                const count = selectedTemplate?.variables?.length || 0
+                                const columns = Math.max(1, Math.min(3, count >= 3 ? 3 : count))
+                                const cardW = 360
+                                const gap = 8
+                                const headerH = 80
+                                const rowH = 120
+                                const rows = Math.max(1, Math.ceil(count / columns))
+                                let w = columns * cardW + (columns - 1) * gap + 48
+                                let h = headerH + rows * rowH + 48
+                                const availW = (window.screen?.availWidth || window.innerWidth) - 40
+                                const availH = (window.screen?.availHeight || window.innerHeight) - 80
+                                w = Math.min(Math.max(600, w), availW)
+                                h = Math.min(Math.max(500, h), availH)
+                                const left = Math.max(0, Math.floor(((window.screen?.availWidth || window.innerWidth) - w) / 2))
+                                const top = Math.max(0, Math.floor(((window.screen?.availHeight || window.innerHeight) - h) / 3))
+                                const features = `popup=yes,width=${Math.round(w)},height=${Math.round(h)},left=${left},top=${top},toolbar=0,location=0,menubar=0,status=0,scrollbars=1,resizable=1`
+                                
+                                const win = window.open(url.toString(), '_blank', features)
+                                if (win && win.focus) win.focus()
+                              }}
                               size="sm"
                               className="shadow-soft"
                               variant="outline"
