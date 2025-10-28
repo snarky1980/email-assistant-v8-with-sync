@@ -1,4 +1,3 @@
-/* eslint-disable no-console, no-prototype-builtins, no-unreachable, no-undef, no-empty */
 /* DEPLOY: 2025-10-15 07:40 - FIXED: Function hoisting error resolved */
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
