@@ -1332,25 +1332,28 @@ function App() {
       return
     }
 
+    // Set flag to prevent circular updates
+    varsRemoteUpdateRef.current = true
+
     const extracted = {}
 
-    // Process subject
-    if (selectedTemplate.subject && subject) {
-      const subjectTemplate = selectedTemplate.subject
+    // Process subject - use finalSubject (the current edited text)
+    if (selectedTemplate.subject && finalSubject) {
+      const subjectTemplate = selectedTemplate.subject[templateLanguage] || ''
       selectedTemplate.variables.forEach(varName => {
         if (subjectTemplate.includes(`<<${varName}>>`)) {
-          const value = extractValueFromText(subject, subjectTemplate, varName)
+          const value = extractValueFromText(finalSubject, subjectTemplate, varName)
           if (value !== null) extracted[varName] = value
         }
       })
     }
 
-    // Process body
-    if (selectedTemplate.body && body) {
-      const bodyTemplate = selectedTemplate.body
+    // Process body - use finalBody (the current edited text)
+    if (selectedTemplate.body && finalBody) {
+      const bodyTemplate = selectedTemplate.body[templateLanguage] || ''
       selectedTemplate.variables.forEach(varName => {
         if (bodyTemplate.includes(`<<${varName}>>`)) {
-          const value = extractValueFromText(body, bodyTemplate, varName)
+          const value = extractValueFromText(finalBody, bodyTemplate, varName)
           if (value !== null) extracted[varName] = value
         }
       })
@@ -1445,14 +1448,26 @@ function App() {
   }, [selectedTemplate, templateLanguage, interfaceLanguage])
 
   // Update final versions when variables change
+  // IMPORTANT: Only replace <<VarName>> placeholders in CURRENT text
+  // Do NOT revert to template - preserve user's manual edits
   useEffect(() => {
-    if (selectedTemplate) {
-      const subjectWithVars = replaceVariables(selectedTemplate.subject[templateLanguage] || '')
-      const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || '')
-      setFinalSubject(subjectWithVars)
-      setFinalBody(bodyWithVars)
+    if (selectedTemplate && !varsRemoteUpdateRef.current) {
+      // Use functional updates to get the latest state values
+      setFinalSubject(currentSubject => {
+        const updatedSubject = replaceVariables(currentSubject)
+        return updatedSubject !== currentSubject ? updatedSubject : currentSubject
+      })
+      
+      setFinalBody(currentBody => {
+        const updatedBody = replaceVariables(currentBody)
+        return updatedBody !== currentBody ? updatedBody : currentBody
+      })
     }
-  }, [variables, selectedTemplate, templateLanguage])
+    // Reset the remote update flag after processing
+    if (varsRemoteUpdateRef.current) {
+      varsRemoteUpdateRef.current = false
+    }
+  }, [variables, selectedTemplate])
 
   /**
    * GRANULAR COPY FUNCTION
