@@ -9374,6 +9374,24 @@ const HighlightingEditor = ({
       lastValueRef.current = newText;
       isUserTypingRef.current = true;
       onChange({ target: { value: newText } });
+      setTimeout(() => {
+        if (editableRef.current && !isInternalUpdateRef.current) {
+          const currentText = extractText(editableRef.current);
+          const highlightedHtml = buildHighlightedHTML(currentText);
+          if (editableRef.current.innerHTML !== highlightedHtml && highlightedHtml.includes("<mark")) {
+            isInternalUpdateRef.current = true;
+            const cursorPos = saveCursorPosition();
+            editableRef.current.innerHTML = highlightedHtml;
+            requestAnimationFrame(() => {
+              restoreCursorPosition(cursorPos);
+              isInternalUpdateRef.current = false;
+              isUserTypingRef.current = false;
+            });
+          } else {
+            isUserTypingRef.current = false;
+          }
+        }
+      }, 100);
     }
   };
   const handleBeforeInput = () => {
@@ -18776,4 +18794,4 @@ const isVarsOnly = params.get("varsOnly") === "1";
 clientExports.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { children: isVarsOnly ? /* @__PURE__ */ jsxRuntimeExports.jsx(VariablesPage, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) })
 );
-//# sourceMappingURL=main-BRbcKJic.js.map
+//# sourceMappingURL=main-Dk-Sbra2.js.map
