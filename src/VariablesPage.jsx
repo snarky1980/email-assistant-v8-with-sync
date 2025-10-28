@@ -26,7 +26,7 @@ export default function VariablesPage() {
     // Load templates data
     const loadData = async () => {
       try {
-        const response = await fetch('/email-assistant-v8-clean/templates.json')
+        const response = await fetch('./templates.json')
         const data = await response.json()
         setTemplatesData(data)
 
