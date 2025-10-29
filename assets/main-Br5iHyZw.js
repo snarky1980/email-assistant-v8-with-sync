@@ -9166,396 +9166,74 @@ const HighlightingEditor = ({
   templateOriginal = "",
   showHighlights = true
 }) => {
-  console.log("🚀 HighlightingEditor render:", { value: value == null ? void 0 : value.substring(0, 50), showHighlights, hasVariables: Object.keys(variables).length > 0 });
-  const editableRef = reactExports.useRef(null);
-  const lastValueRef = reactExports.useRef(value);
-  const isInternalUpdateRef = reactExports.useRef(false);
-  const isUserTypingRef = reactExports.useRef(false);
-  const escapeHtml = (s = "") => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
-  const highlightFilledVariables = (text, templateOriginal2) => {
-    try {
-      console.log("🔧 highlightFilledVariables called:", {
-        textPreview: text.substring(0, 80),
-        templatePreview: templateOriginal2.substring(0, 80)
-      });
-      const templateSegments = [];
-      const varPattern = /<<([^>]+)>>/g;
-      let lastIndex = 0;
-      let match;
-      while ((match = varPattern.exec(templateOriginal2)) !== null) {
-        if (match.index > lastIndex) {
-          templateSegments.push({
-            type: "literal",
-            content: templateOriginal2.slice(lastIndex, match.index)
-          });
-        }
-        templateSegments.push({
-          type: "variable",
-          name: match[1],
-          placeholder: match[0]
-        });
-        lastIndex = match.index + match[0].length;
-      }
-      if (lastIndex < templateOriginal2.length) {
-        templateSegments.push({
-          type: "literal",
-          content: templateOriginal2.slice(lastIndex)
-        });
-      }
-      console.log("🔧 Template segments:", templateSegments.length, templateSegments.map((s) => ({
-        type: s.type,
-        content: s.type === "literal" ? s.content.substring(0, 20) : s.name
-      })));
-      if (templateSegments.length === 0) {
-        console.log("🔧 No template segments - returning plain text");
-        return escapeHtml(text).replace(/\n/g, "<br>");
-      }
-      let textCursor = 0;
-      let html = "";
-      let matchedSuccessfully = true;
-      for (let i = 0; i < templateSegments.length; i++) {
-        const segment = templateSegments[i];
-        if (segment.type === "literal") {
-          const literalText = segment.content;
-          if (literalText.trim()) {
-            const foundIndex = text.indexOf(literalText, textCursor);
-            if (foundIndex !== -1) {
-              if (foundIndex > textCursor) {
-                const beforeText = text.slice(textCursor, foundIndex);
-                html += escapeHtml(beforeText).replace(/\n/g, "<br>");
-              }
-              html += escapeHtml(literalText).replace(/\n/g, "<br>");
-              textCursor = foundIndex + literalText.length;
-            } else {
-              matchedSuccessfully = false;
-              break;
-            }
-          }
-        } else if (segment.type === "variable") {
-          const varName = segment.name;
-          const varValue = variables[varName] || "";
-          const nextSegment = templateSegments[i + 1];
-          let variableEndPos;
-          if (nextSegment && nextSegment.type === "literal" && nextSegment.content.trim()) {
-            variableEndPos = text.indexOf(nextSegment.content, textCursor);
-            if (variableEndPos === -1) {
-              matchedSuccessfully = false;
-              break;
-            }
-          } else {
-            variableEndPos = text.length;
-          }
-          const actualVariableContent = text.slice(textCursor, variableEndPos);
-          if (actualVariableContent) {
-            const isEmpty = !actualVariableContent.trim() || actualVariableContent === segment.placeholder;
-            html += `<mark class="var-highlight ${isEmpty ? "empty" : "filled"}" data-var="${escapeHtml(varName)}">${escapeHtml(actualVariableContent)}</mark>`;
-          } else {
-            html += `<mark class="var-highlight empty" data-var="${escapeHtml(varName)}">${escapeHtml(segment.placeholder)}</mark>`;
-          }
-          textCursor = variableEndPos;
-        }
-      }
-      if (textCursor < text.length && matchedSuccessfully) {
-        html += escapeHtml(text.slice(textCursor)).replace(/\n/g, "<br>");
-      }
-      if (!matchedSuccessfully) {
-        console.log("🔧 Structure match failed - falling back to plain text");
-        return escapeHtml(text).replace(/\n/g, "<br>");
-      }
-      return html;
-    } catch (error) {
-      console.error("Error in highlightFilledVariables:", error);
-      return escapeHtml(text).replace(/\n/g, "<br>");
-    }
+  const textareaRef = reactExports.useRef(null);
+  const overlayRef = reactExports.useRef(null);
+  const [isFocused, setIsFocused] = reactExports.useState(false);
+  const createHighlightedHTML = (text) => {
+    if (!text || !showHighlights) return "";
+    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+    html = html.replace(/&lt;&lt;([^&]+)&gt;&gt;/g, (match, varName) => {
+      const varValue = variables[varName] || "";
+      const filled = varValue.trim().length > 0;
+      const className = filled ? "var-highlight filled" : "var-highlight empty";
+      const displayText = filled ? varValue.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : `&lt;&lt;${varName}&gt;&gt;`;
+      return `<mark class="${className}" data-var="${varName}">${displayText}</mark>`;
+    });
+    html = html.replace(/\n/g, "<br>");
+    return html;
   };
-  const buildHighlightedHTML = (text) => {
-    if (!text) return "";
-    try {
-      console.log("🔍 buildHighlightedHTML called:", {
-        textPreview: text.substring(0, 80),
-        variablesCount: Object.keys(variables).length,
-        variablesList: Object.keys(variables).join(", "),
-        hasTemplate: !!templateOriginal,
-        templatePreview: templateOriginal == null ? void 0 : templateOriginal.substring(0, 50)
-      });
-      const variablePattern = /<<([^>]+)>>/g;
-      const foundPlaceholders = [];
-      let match;
-      variablePattern.lastIndex = 0;
-      while ((match = variablePattern.exec(text)) !== null) {
-        foundPlaceholders.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          varName: match[1],
-          placeholder: match[0]
-        });
-      }
-      console.log("🔍 Found <<VarName>> patterns:", foundPlaceholders.length, foundPlaceholders);
-      if (foundPlaceholders.length === 0 && Object.keys(variables).length > 0 && templateOriginal) {
-        console.log("🔍 Using filled variables strategy");
-        const result = highlightFilledVariables(text, templateOriginal);
-        console.log("🔍 Filled variables result:", result.substring(0, 200) + (result.length > 200 ? "..." : ""));
-        return result;
-      }
-      if (foundPlaceholders.length > 0) {
-        console.log("🔍 Using placeholder highlighting strategy");
-        let html = "";
-        let lastIndex = 0;
-        for (const placeholder2 of foundPlaceholders) {
-          html += escapeHtml(text.slice(lastIndex, placeholder2.start)).replace(/\n/g, "<br>");
-          const varName = placeholder2.varName;
-          const varValue = variables[varName] || "";
-          const filled = varValue.trim().length > 0;
-          const displayText = filled ? varValue : placeholder2.placeholder;
-          html += `<mark class="var-highlight ${filled ? "filled" : "empty"}" data-var="${escapeHtml(varName)}">${escapeHtml(displayText)}</mark>`;
-          lastIndex = placeholder2.end;
-        }
-        html += escapeHtml(text.slice(lastIndex)).replace(/\n/g, "<br>");
-        console.log("🔍 Placeholder highlight result:", html.substring(0, 200) + (html.length > 200 ? "..." : ""));
-        return html;
-      }
-      console.log("🔍 Using fallback - no highlighting applied");
-      return escapeHtml(text).replace(/\n/g, "<br>");
-    } catch (error) {
-      console.error("Error in buildHighlightedHTML:", error);
-      return escapeHtml(text).replace(/\n/g, "<br>");
-    }
+  const handleChange = (e) => {
+    onChange(e);
   };
-  const extractText = (el) => {
-    if (!el) return "";
-    try {
-      let text = "";
-      let hasContent = false;
-      for (const node of el.childNodes) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          text += node.textContent;
-          if (node.textContent.trim()) hasContent = true;
-        } else if (node.nodeName === "BR") {
-          text += "\n";
-          hasContent = true;
-        } else if (node.nodeName === "MARK") {
-          text += node.textContent || "";
-          if (node.textContent && node.textContent.trim()) hasContent = true;
-        } else if (node.nodeName === "DIV") {
-          const divContent = extractText(node);
-          if (divContent.trim()) {
-            if (hasContent && text && !text.endsWith("\n")) {
-              text += "\n";
-            }
-            text += divContent;
-            hasContent = true;
-          }
-        } else {
-          const nodeText = node.textContent || "";
-          text += nodeText;
-          if (nodeText.trim()) hasContent = true;
-        }
-      }
-      return text;
-    } catch (error) {
-      console.error("Error extracting text from contentEditable:", error);
-      return el.textContent || "";
-    }
+  const handleFocus = () => {
+    setIsFocused(true);
   };
-  const handleInput = () => {
-    var _a;
-    if (!editableRef.current) return;
-    if (isInternalUpdateRef.current) {
-      console.log("🔧 Skipping handleInput - internal update in progress");
-      return;
-    }
-    const newText = extractText(editableRef.current);
-    if (newText !== lastValueRef.current) {
-      console.log("✏️ User edit detected:", {
-        oldLength: ((_a = lastValueRef.current) == null ? void 0 : _a.length) || 0,
-        newLength: newText.length,
-        preview: newText.substring(0, 50)
-      });
-      lastValueRef.current = newText;
-      isUserTypingRef.current = true;
-      onChange({ target: { value: newText } });
-      setTimeout(() => {
-        if (editableRef.current && !isInternalUpdateRef.current) {
-          const currentText = extractText(editableRef.current);
-          const highlightedHtml = buildHighlightedHTML(currentText);
-          if (editableRef.current.innerHTML !== highlightedHtml && highlightedHtml.includes("<mark")) {
-            isInternalUpdateRef.current = true;
-            const cursorPos = saveCursorPosition();
-            editableRef.current.innerHTML = highlightedHtml;
-            requestAnimationFrame(() => {
-              restoreCursorPosition(cursorPos);
-              isInternalUpdateRef.current = false;
-              isUserTypingRef.current = false;
-            });
-          } else {
-            isUserTypingRef.current = false;
-          }
-        }
-      }, 100);
-    }
-  };
-  const handleBeforeInput = () => {
-  };
-  const handleKeyDown = () => {
-  };
-  const saveCursorPosition = () => {
-    try {
-      const sel = window.getSelection();
-      if (!sel.rangeCount || !editableRef.current) return null;
-      const range = sel.getRangeAt(0);
-      const preCaretRange = range.cloneRange();
-      preCaretRange.selectNodeContents(editableRef.current);
-      preCaretRange.setEnd(range.endContainer, range.endOffset);
-      const caretOffset = preCaretRange.toString().length;
-      return caretOffset;
-    } catch (error) {
-      console.warn("Error saving cursor position:", error);
-      return null;
-    }
-  };
-  const restoreCursorPosition = (offset2) => {
-    if (!editableRef.current || offset2 === null || offset2 === void 0) return;
-    try {
-      const sel = window.getSelection();
-      const range = document.createRange();
-      let currentOffset = 0;
-      let found = false;
-      const findOffset = (node) => {
-        if (found) return;
-        if (node.nodeType === Node.TEXT_NODE) {
-          const textLength = node.textContent.length;
-          const nextOffset = currentOffset + textLength;
-          if (nextOffset >= offset2) {
-            const nodeOffset = Math.min(offset2 - currentOffset, textLength);
-            range.setStart(node, Math.max(0, nodeOffset));
-            range.collapse(true);
-            found = true;
-            return;
-          }
-          currentOffset = nextOffset;
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          for (const child of node.childNodes) {
-            if (found) return;
-            findOffset(child);
-          }
-        }
-      };
-      findOffset(editableRef.current);
-      if (found) {
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-    } catch (error) {
-      console.warn("Error restoring cursor position:", error);
-    }
+  const handleBlur = () => {
+    setIsFocused(false);
   };
   reactExports.useEffect(() => {
-    if (!editableRef.current) return;
-    if (isInternalUpdateRef.current) {
-      console.log("🔧 Skipping effect - internal update in progress");
-      return;
+    if (overlayRef.current) {
+      overlayRef.current.innerHTML = createHighlightedHTML(value || "");
     }
-    if (isUserTypingRef.current) {
-      console.log("🔧 User typing - applying highlights immediately");
-      const textToRender2 = value || "";
-      const newHtml2 = buildHighlightedHTML(textToRender2);
-      if (editableRef.current.innerHTML !== newHtml2) {
-        isInternalUpdateRef.current = true;
-        const cursorPos2 = saveCursorPosition();
-        editableRef.current.innerHTML = newHtml2;
-        lastValueRef.current = textToRender2;
-        requestAnimationFrame(() => {
-          restoreCursorPosition(cursorPos2);
-          setTimeout(() => {
-            isInternalUpdateRef.current = false;
-            isUserTypingRef.current = false;
-          }, 50);
-        });
-      } else {
-        isUserTypingRef.current = false;
+  }, [value, variables, showHighlights]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+    showHighlights && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        ref: overlayRef,
+        className: "absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-hidden rounded-[12px] bg-[#f9fdfd]",
+        style: {
+          minHeight,
+          fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+          color: "transparent",
+          whiteSpace: "pre-wrap",
+          wordWrap: "break-word"
+        },
+        "aria-hidden": "true"
       }
-      return;
-    }
-    const hasVars = Object.keys(variables).length > 0;
-    const hasTemplate = !!templateOriginal;
-    const textToRender = value || "";
-    console.log("🔧 Highlighting effect triggered:", {
-      hasValue: !!value,
-      hasVariables: hasVars,
-      hasTemplate,
-      valuePreview: value == null ? void 0 : value.substring(0, 50),
-      variablesCount: Object.keys(variables).length
-    });
-    if (!hasTemplate && !hasVars) {
-      console.log("⏳ No template or variables - plain text mode");
-      const plainHtml = escapeHtml(textToRender).replace(/\n/g, "<br>");
-      if (editableRef.current.innerHTML !== plainHtml) {
-        isInternalUpdateRef.current = true;
-        editableRef.current.innerHTML = plainHtml;
-        lastValueRef.current = textToRender;
-        setTimeout(() => {
-          isInternalUpdateRef.current = false;
-        }, 50);
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "textarea",
+      {
+        ref: textareaRef,
+        value,
+        onChange: handleChange,
+        onFocus: handleFocus,
+        onBlur: handleBlur,
+        placeholder,
+        className: `
+          relative z-20 w-full border-2 transition-all duration-200 rounded-[12px] px-4 py-4 
+          text-[16px] leading-[1.7] tracking-[0.01em] resize-none overflow-auto
+          ${isFocused ? "border-[#7bd1ca] outline-none ring-2 ring-[#7bd1ca]/30" : "border-[#bfe7e3]"}
+          ${showHighlights ? "bg-transparent" : "bg-[#f9fdfd]"}
+        `,
+        style: {
+          minHeight,
+          fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        }
       }
-      return;
-    }
-    const newHtml = buildHighlightedHTML(textToRender);
-    const currentHtml = editableRef.current.innerHTML;
-    if (currentHtml === newHtml) {
-      lastValueRef.current = textToRender;
-      return;
-    }
-    console.log("🔧 Applying highlights (always visible per spec)");
-    isInternalUpdateRef.current = true;
-    const cursorPos = saveCursorPosition();
-    editableRef.current.innerHTML = newHtml;
-    lastValueRef.current = textToRender;
-    requestAnimationFrame(() => {
-      restoreCursorPosition(cursorPos);
-      setTimeout(() => {
-        isInternalUpdateRef.current = false;
-      }, 50);
-    });
-  }, [value, variables, templateOriginal]);
-  const handleMouseUp = () => {
-    if (!editableRef.current) return;
-    if (isUserTypingRef.current) {
-      console.log("🔄 Mouse up - user is typing, skipping highlight restoration");
-      return;
-    }
-    const currentHtml = editableRef.current.innerHTML;
-    const hasMarks = currentHtml.includes("<mark");
-    const expectedHtml = buildHighlightedHTML(value || "");
-    const expectedHasMarks = expectedHtml.includes("<mark");
-    if (!hasMarks && expectedHasMarks) {
-      console.log("🔄 Mouse up - highlights missing, restoring expected highlights");
-      isInternalUpdateRef.current = true;
-      const cursorPos = saveCursorPosition();
-      editableRef.current.innerHTML = expectedHtml;
-      lastValueRef.current = value;
-      requestAnimationFrame(() => {
-        restoreCursorPosition(cursorPos);
-        setTimeout(() => {
-          isInternalUpdateRef.current = false;
-        }, 50);
-      });
-    }
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      ref: editableRef,
-      contentEditable: true,
-      onInput: handleInput,
-      onBeforeInput: handleBeforeInput,
-      onKeyDown: handleKeyDown,
-      onMouseUp: handleMouseUp,
-      suppressContentEditableWarning: true,
-      className: "border-2 border-[#bfe7e3] focus:border-[#7bd1ca] focus:outline-none focus:ring-2 focus:ring-[#7bd1ca]/30 transition-all duration-200 rounded-[12px] px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] bg-[#f9fdfd] resize-none overflow-auto",
-      style: { minHeight, fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" },
-      "data-placeholder": placeholder
-    }
-  );
+    )
+  ] });
 };
 const Card = reactExports.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ jsxRuntimeExports.jsx(
   "div",
@@ -17010,6 +16688,105 @@ function App() {
     });
     return result;
   };
+  const syncFromText = () => {
+    console.log("🔄 Sync from text: Starting reverse synchronization...");
+    if (!selectedTemplate || !templatesData) {
+      console.log("🔄 No template selected or templates data unavailable");
+      return;
+    }
+    const extracted = {};
+    const subjectTemplate = selectedTemplate.subject[templateLanguage] || "";
+    const bodyTemplate = selectedTemplate.body[templateLanguage] || "";
+    if (subjectTemplate && finalSubject) {
+      selectedTemplate.variables.forEach((varName) => {
+        if (subjectTemplate.includes(`<<${varName}>>`)) {
+          const value = extractValueFromText(finalSubject, subjectTemplate, varName);
+          if (value !== null) extracted[varName] = value;
+        }
+      });
+    }
+    if (bodyTemplate && finalBody) {
+      selectedTemplate.variables.forEach((varName) => {
+        if (bodyTemplate.includes(`<<${varName}>>`)) {
+          const value = extractValueFromText(finalBody, bodyTemplate, varName);
+          if (value !== null) extracted[varName] = value;
+        }
+      });
+    }
+    console.log("🔄 Extracted values:", extracted);
+    if (Object.keys(extracted).length > 0) {
+      setVariables((prev) => ({ ...prev, ...extracted }));
+      console.log("🔄 Variables updated successfully");
+      return true;
+    } else {
+      console.log("🔄 No values extracted");
+      return false;
+    }
+  };
+  const extractValueFromText = (text, templateText, varName) => {
+    try {
+      const varPlaceholder = `<<${varName}>>`;
+      const varIndex = templateText.indexOf(varPlaceholder);
+      if (varIndex === -1) {
+        console.log(`🔄 Variable ${varName} not found in template`);
+        return null;
+      }
+      const beforeText = templateText.substring(0, varIndex);
+      const beforeVarMatch = beforeText.match(/<<[^>]+>>(?!.*<<[^>]+>>)/);
+      const beforeAnchorStart = beforeVarMatch ? beforeVarMatch.index + beforeVarMatch[0].length : Math.max(0, varIndex - 50);
+      const beforeAnchor = templateText.substring(beforeAnchorStart, varIndex).trim();
+      const afterStart = varIndex + varPlaceholder.length;
+      const afterText = templateText.substring(afterStart);
+      const afterVarMatch = afterText.match(/<<[^>]+>>/);
+      const afterAnchorEnd = afterVarMatch ? afterVarMatch.index : Math.min(afterText.length, 50);
+      const afterAnchor = templateText.substring(afterStart, afterStart + afterAnchorEnd).trim();
+      console.log(`🔄 Extracting ${varName} with anchors:`, {
+        before: beforeAnchor.substring(0, 30),
+        after: afterAnchor.substring(0, 30)
+      });
+      let startPos = 0;
+      let endPos = text.length;
+      if (beforeAnchor) {
+        const beforeIndex = text.indexOf(beforeAnchor);
+        if (beforeIndex !== -1) {
+          startPos = beforeIndex + beforeAnchor.length;
+        } else {
+          const partialBefore = beforeAnchor.substring(Math.max(0, beforeAnchor.length - 20));
+          const partialIndex = text.indexOf(partialBefore);
+          if (partialIndex !== -1) {
+            startPos = partialIndex + partialBefore.length;
+          } else {
+            console.log(`🔄 Could not find before anchor for ${varName}`);
+            return null;
+          }
+        }
+      }
+      if (afterAnchor) {
+        const afterIndex = text.indexOf(afterAnchor, startPos);
+        if (afterIndex !== -1) {
+          endPos = afterIndex;
+        } else {
+          const partialAfter = afterAnchor.substring(0, 20);
+          const partialIndex = text.indexOf(partialAfter, startPos);
+          if (partialIndex !== -1) {
+            endPos = partialIndex;
+          } else {
+            console.log(`🔄 Could not find after anchor for ${varName}, using end of text`);
+          }
+        }
+      }
+      const extracted = text.substring(startPos, endPos).trim();
+      if (!extracted || extracted === varPlaceholder) {
+        console.log(`🔄 No value found for ${varName}`);
+        return null;
+      }
+      console.log(`🔄 Extracted ${varName}: "${extracted.substring(0, 50)}${extracted.length > 50 ? "..." : ""}"`);
+      return extracted;
+    } catch (error) {
+      console.warn(`🔄 Error extracting ${varName}:`, error);
+      return null;
+    }
+  };
   reactExports.useEffect(() => {
     if (selectedTemplate) {
       const initialVars = {};
@@ -17032,10 +16809,16 @@ function App() {
   }, [selectedTemplate, templateLanguage, interfaceLanguage]);
   reactExports.useEffect(() => {
     if (selectedTemplate) {
-      const subjectWithVars = replaceVariables(selectedTemplate.subject[templateLanguage] || "");
-      const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || "");
-      setFinalSubject(subjectWithVars);
-      setFinalBody(bodyWithVars);
+      const subjectTemplate = selectedTemplate.subject[templateLanguage] || "";
+      const bodyTemplate = selectedTemplate.body[templateLanguage] || "";
+      if (finalSubject === subjectTemplate || finalSubject.includes("<<")) {
+        const subjectWithVars = replaceVariables(subjectTemplate);
+        setFinalSubject(subjectWithVars);
+      }
+      if (finalBody === bodyTemplate || finalBody.includes("<<")) {
+        const bodyWithVars = replaceVariables(bodyTemplate);
+        setFinalBody(bodyWithVars);
+      }
     }
   }, [variables, selectedTemplate, templateLanguage]);
   const copyToClipboard = async (type = "all") => {
@@ -17207,7 +16990,7 @@ ${finalBody}`;
     }
     setShowResetWarning(false);
   };
-  function openInOutlook() {
+  const openInOutlook = () => {
     if (debug) console.log("Opening email client with subject:", finalSubject);
     if (!finalSubject && !finalBody) {
       alert(templateLanguage === "fr" ? "Veuillez d'abord sélectionner un modèle et remplir le contenu." : "Please first select a template and fill in the content.");
@@ -17243,7 +17026,7 @@ ${finalBody}`).then(() => {
         });
       }
     }
-  }
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-screen", style: { background: "linear-gradient(to bottom right, #f8fafc, #dbeafe, #e0f2fe)" }, children: [
     debug && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { position: "fixed", bottom: 8, left: 8, background: "#1e293b", color: "#fff", padding: "8px 12px", borderRadius: 8, fontSize: 12, zIndex: 9999, boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontWeight: 600 }, children: "Debug" }),
@@ -17688,44 +17471,66 @@ ${finalBody}`).then(() => {
                   t.editEmail
                 ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center space-x-3", children: [
-                  selectedTemplate && selectedTemplate.variables && selectedTemplate.variables.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    Button,
-                    {
-                      onClick: () => {
-                        var _a2, _b2, _c2, _d, _e;
-                        const url = new URL(window.location.href);
-                        url.searchParams.set("varsOnly", "1");
-                        if (selectedTemplate == null ? void 0 : selectedTemplate.id) url.searchParams.set("id", selectedTemplate.id);
-                        if (templateLanguage) url.searchParams.set("lang", templateLanguage);
-                        const count2 = ((_a2 = selectedTemplate == null ? void 0 : selectedTemplate.variables) == null ? void 0 : _a2.length) || 0;
-                        const columns = Math.max(1, Math.min(3, count2 >= 3 ? 3 : count2));
-                        const cardW = 360;
-                        const gap = 8;
-                        const headerH = 80;
-                        const rowH = 120;
-                        const rows = Math.max(1, Math.ceil(count2 / columns));
-                        let w = columns * cardW + (columns - 1) * gap + 48;
-                        let h = headerH + rows * rowH + 48;
-                        const availW = (((_b2 = window.screen) == null ? void 0 : _b2.availWidth) || window.innerWidth) - 40;
-                        const availH = (((_c2 = window.screen) == null ? void 0 : _c2.availHeight) || window.innerHeight) - 80;
-                        w = Math.min(Math.max(600, w), availW);
-                        h = Math.min(Math.max(500, h), availH);
-                        const left = Math.max(0, Math.floor(((((_d = window.screen) == null ? void 0 : _d.availWidth) || window.innerWidth) - w) / 2));
-                        const top = Math.max(0, Math.floor(((((_e = window.screen) == null ? void 0 : _e.availHeight) || window.innerHeight) - h) / 3));
-                        const features = `popup=yes,width=${Math.round(w)},height=${Math.round(h)},left=${left},top=${top},toolbar=0,location=0,menubar=0,status=0,scrollbars=1,resizable=1`;
-                        const win = window.open(url.toString(), "_blank", features);
-                        if (win && win.focus) win.focus();
-                      },
-                      size: "sm",
-                      className: "shadow-soft",
-                      variant: "outline",
-                      style: { background: "#fff", color: "#145a64", borderColor: "rgba(20,90,100,0.35)" },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { className: "h-4 w-4 mr-2" }),
-                        t.variables
-                      ]
-                    }
-                  ) }),
+                  selectedTemplate && selectedTemplate.variables && selectedTemplate.variables.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      Button,
+                      {
+                        onClick: () => {
+                          var _a2, _b2, _c2, _d, _e;
+                          const url = new URL(window.location.href);
+                          url.searchParams.set("varsOnly", "1");
+                          if (selectedTemplate == null ? void 0 : selectedTemplate.id) url.searchParams.set("id", selectedTemplate.id);
+                          if (templateLanguage) url.searchParams.set("lang", templateLanguage);
+                          const count2 = ((_a2 = selectedTemplate == null ? void 0 : selectedTemplate.variables) == null ? void 0 : _a2.length) || 0;
+                          const columns = Math.max(1, Math.min(3, count2 >= 3 ? 3 : count2));
+                          const cardW = 360;
+                          const gap = 8;
+                          const headerH = 80;
+                          const rowH = 120;
+                          const rows = Math.max(1, Math.ceil(count2 / columns));
+                          let w = columns * cardW + (columns - 1) * gap + 48;
+                          let h = headerH + rows * rowH + 48;
+                          const availW = (((_b2 = window.screen) == null ? void 0 : _b2.availWidth) || window.innerWidth) - 40;
+                          const availH = (((_c2 = window.screen) == null ? void 0 : _c2.availHeight) || window.innerHeight) - 80;
+                          w = Math.min(Math.max(600, w), availW);
+                          h = Math.min(Math.max(500, h), availH);
+                          const left = Math.max(0, Math.floor(((((_d = window.screen) == null ? void 0 : _d.availWidth) || window.innerWidth) - w) / 2));
+                          const top = Math.max(0, Math.floor(((((_e = window.screen) == null ? void 0 : _e.availHeight) || window.innerHeight) - h) / 3));
+                          const features = `popup=yes,width=${Math.round(w)},height=${Math.round(h)},left=${left},top=${top},toolbar=0,location=0,menubar=0,status=0,scrollbars=1,resizable=1`;
+                          const win = window.open(url.toString(), "_blank", features);
+                          if (win && win.focus) win.focus();
+                        },
+                        size: "sm",
+                        className: "shadow-soft",
+                        variant: "outline",
+                        style: { background: "#fff", color: "#145a64", borderColor: "rgba(20,90,100,0.35)" },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { className: "h-4 w-4 mr-2" }),
+                          t.variables
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      Button,
+                      {
+                        onClick: () => {
+                          const subjectWithVars = replaceVariables(selectedTemplate.subject[templateLanguage] || "");
+                          const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || "");
+                          setFinalSubject(subjectWithVars);
+                          setFinalBody(bodyWithVars);
+                        },
+                        size: "sm",
+                        className: "shadow-soft",
+                        variant: "outline",
+                        style: { background: "#fff", color: "#145a64", borderColor: "rgba(20,90,100,0.35)" },
+                        title: "Replace placeholders with variable values",
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { className: "h-4 w-4 mr-2" }),
+                          "Fill Variables"
+                        ]
+                      }
+                    )
+                  ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     Button,
                     {
@@ -18794,4 +18599,4 @@ const isVarsOnly = params.get("varsOnly") === "1";
 clientExports.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { children: isVarsOnly ? /* @__PURE__ */ jsxRuntimeExports.jsx(VariablesPage, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) })
 );
-//# sourceMappingURL=main-Dk-Sbra2.js.map
+//# sourceMappingURL=main-Br5iHyZw.js.map
