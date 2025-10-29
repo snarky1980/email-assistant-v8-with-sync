@@ -1367,6 +1367,7 @@ function App() {
       result = result.replace(regex, value || `<<${varName}>>`)
     })
     return result
+  }
 
   // Sync from text: Extract variable values from text areas back to Variables Editor
   const syncFromText = () => {
@@ -1505,7 +1506,6 @@ function App() {
       return null
     }
   }
-  }
 
   // Load a selected template
   useEffect(() => {
@@ -1519,30 +1519,42 @@ function App() {
         }
       })
       
-      // Set the template text with <<VarName>> placeholders
-      // The HighlightingEditor will display the filled values via highlighting
+      // Set the template text with <<VarName>> placeholders initially
+      // The HighlightingEditor will show variable values through overlay highlighting
       const subjectTemplate = selectedTemplate.subject[templateLanguage] || ''
       const bodyTemplate = selectedTemplate.body[templateLanguage] || ''
       
-      // Batch all state updates together - React will apply them in one render cycle
+      // Start with template placeholders - users can edit from there
       setVariables(initialVars)
       setFinalSubject(subjectTemplate)
       setFinalBody(bodyTemplate)
     } else {
-      // No template selected - clear editors; placeholder text shown via UI
+      // No template selected - clear editors
       setVariables({})
       setFinalSubject('')
       setFinalBody('')
     }
   }, [selectedTemplate, templateLanguage, interfaceLanguage])
 
-  // Update final versions when variables change
+  // Update final versions when variables change - but only update template placeholders, not user edits
   useEffect(() => {
     if (selectedTemplate) {
-      const subjectWithVars = replaceVariables(selectedTemplate.subject[templateLanguage] || '')
-      const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || '')
-      setFinalSubject(subjectWithVars)
-      setFinalBody(bodyWithVars)
+      // Only replace variables if the text still contains placeholders
+      // This prevents overwriting user edits
+      const subjectTemplate = selectedTemplate.subject[templateLanguage] || ''
+      const bodyTemplate = selectedTemplate.body[templateLanguage] || ''
+      
+      // For subject: only update if it's still the template or contains placeholders
+      if (finalSubject === subjectTemplate || finalSubject.includes('<<')) {
+        const subjectWithVars = replaceVariables(subjectTemplate)
+        setFinalSubject(subjectWithVars)
+      }
+      
+      // For body: only update if it's still the template or contains placeholders  
+      if (finalBody === bodyTemplate || finalBody.includes('<<')) {
+        const bodyWithVars = replaceVariables(bodyTemplate)
+        setFinalBody(bodyWithVars)
+      }
     }
   }, [variables, selectedTemplate, templateLanguage])
 
@@ -1765,7 +1777,7 @@ function App() {
   }
 
   // Open default mail client (Outlook if default) with subject/body prefilled
-  function openInOutlook() {
+  const openInOutlook = () => {
     if (debug) console.log('Opening email client with subject:', finalSubject)
     
     if (!finalSubject && !finalBody) {
@@ -2325,7 +2337,24 @@ function App() {
 	                          <Settings className="h-4 w-4 mr-2" />
 	                          {t.variables}
 	                        </Button>
-                            {/* Toggle removed for stability - highlighting always enabled */}
+                            
+                            <Button
+                              onClick={() => {
+                                // Fill placeholders with variable values
+                                const subjectWithVars = replaceVariables(selectedTemplate.subject[templateLanguage] || '')
+                                const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || '')
+                                setFinalSubject(subjectWithVars)
+                                setFinalBody(bodyWithVars)
+                              }}
+                              size="sm"
+                              className="shadow-soft"
+                              variant="outline" 
+                              style={{ background: '#fff', color: '#145a64', borderColor: 'rgba(20,90,100,0.35)' }}
+                              title="Replace placeholders with variable values"
+                            >
+                              <Edit3 className="h-4 w-4 mr-2" />
+                              Fill Variables
+                            </Button>
                           </>
 	                      )}
                         {/* IA trigger: opens hidden AI panel - Sage accent */}
