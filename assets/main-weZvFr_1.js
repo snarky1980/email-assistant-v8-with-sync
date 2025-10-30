@@ -9160,6 +9160,8 @@ Input.displayName = "Input";
 const HighlightingEditor = ({
   value,
   onChange,
+  onFocus,
+  onBlur,
   variables = {},
   placeholder = "",
   minHeight = "150px",
@@ -9232,7 +9234,7 @@ const HighlightingEditor = ({
         const varValue = variables[varName] || "";
         const filled = varValue.trim().length > 0;
         const className = filled ? "var-highlight filled" : "var-highlight empty";
-        const displayText = filled ? escapeHtml(varValue) : `&lt;&lt;${varName}&gt;&gt;`;
+        const displayText = `&lt;&lt;${varName}&gt;&gt;`;
         return `<mark class="${className}" data-var="${varName}">${displayText}</mark>`;
       });
       return html.replace(/\n/g, "<br>");
@@ -9260,23 +9262,37 @@ const HighlightingEditor = ({
   const handleChange = (e) => {
     onChange(e);
   };
-  const handleFocus = () => {
+  const handleFocus = (e) => {
     setIsFocused(true);
+    onFocus == null ? void 0 : onFocus(e);
   };
-  const handleBlur = () => {
+  const handleBlur = (e) => {
     setIsFocused(false);
+    onBlur == null ? void 0 : onBlur(e);
   };
   reactExports.useEffect(() => {
     if (overlayRef.current) {
       overlayRef.current.innerHTML = createHighlightedHTML(value || "");
     }
   }, [value, variables, showHighlights]);
+  reactExports.useEffect(() => {
+    const ta = textareaRef.current;
+    const ov = overlayRef.current;
+    if (!ta || !ov) return;
+    const syncScroll = () => {
+      ov.scrollTop = ta.scrollTop;
+      ov.scrollLeft = ta.scrollLeft;
+    };
+    ta.addEventListener("scroll", syncScroll);
+    syncScroll();
+    return () => ta.removeEventListener("scroll", syncScroll);
+  }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
     showHighlights && /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
         ref: overlayRef,
-        className: "absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-hidden rounded-[12px]",
+        className: "absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-auto rounded-[12px]",
         style: {
           minHeight,
           fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
@@ -15901,6 +15917,7 @@ function App() {
   const varsChannelRef = reactExports.useRef(null);
   const varsSenderIdRef = reactExports.useRef(Math.random().toString(36).slice(2));
   const varsRemoteUpdateRef = reactExports.useRef(false);
+  const manualEditRef = reactExports.useRef({ subject: false, body: false });
   const pendingTemplateIdRef = reactExports.useRef(null);
   const canUseBC = typeof window !== "undefined" && "BroadcastChannel" in window;
   reactExports.useEffect(() => {
@@ -16770,12 +16787,94 @@ function App() {
   const toggleFav = (id) => {
     setFavorites((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
-  const replaceVariables = (text) => {
+  const replaceVariablesWithValues = (text, values) => {
+    if (!text) return "";
     let result = text;
-    Object.entries(variables).forEach(([varName, value]) => {
+    Object.entries(values || {}).forEach(([varName, value]) => {
+      const replacement = value !== void 0 && value !== null && String(value).length ? String(value) : `<<${varName}>>`;
       const regex = new RegExp(`<<${varName}>>`, "g");
-      result = result.replace(regex, value || `<<${varName}>>`);
+      result = result.replace(regex, replacement);
     });
+    return result;
+  };
+  const replaceVariables = (text) => replaceVariablesWithValues(text, variables);
+  const parseTemplateStructure = (tpl) => {
+    if (!tpl) return [];
+    const parts = [];
+    const regex = /<<([^>]+)>>/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(tpl)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: "text", value: tpl.slice(lastIndex, match.index) });
+      }
+      parts.push({ type: "var", name: match[1] });
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < tpl.length) {
+      parts.push({ type: "text", value: tpl.slice(lastIndex) });
+    }
+    return parts;
+  };
+  const computeVarRangesInText = (text, tpl) => {
+    if (!tpl || typeof text !== "string") return [];
+    const parts = parseTemplateStructure(tpl);
+    if (!parts.length) return [];
+    let cursor = 0;
+    const ranges = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (part.type === "text") {
+        if (!part.value) continue;
+        const idx = text.indexOf(part.value, cursor);
+        if (idx === -1) return [];
+        cursor = idx + part.value.length;
+      } else if (part.type === "var") {
+        const nextText = (() => {
+          for (let j = i + 1; j < parts.length; j++) {
+            if (parts[j].type === "text" && parts[j].value) return parts[j].value;
+          }
+          return null;
+        })();
+        const start = cursor;
+        let end;
+        if (nextText) {
+          const nextIdx = text.indexOf(nextText, start);
+          end = nextIdx === -1 ? text.length : nextIdx;
+        } else {
+          end = text.length;
+        }
+        if (end >= start) {
+          ranges.push({ start, end, name: part.name });
+          cursor = end;
+        }
+      }
+    }
+    return ranges;
+  };
+  const applyVariablesToCurrentText = (currentText, templateText, values) => {
+    if (!templateText) return currentText ?? "";
+    const safeCurrent = typeof currentText === "string" ? currentText : "";
+    const templateParts = parseTemplateStructure(templateText);
+    const varCount = templateParts.filter((p) => p.type === "var").length;
+    if (varCount === 0) return safeCurrent;
+    if (!safeCurrent.length) {
+      return replaceVariablesWithValues(templateText, values);
+    }
+    const ranges = computeVarRangesInText(safeCurrent, templateText);
+    if (ranges.length !== varCount) {
+      return safeCurrent;
+    }
+    let result = "";
+    let last = 0;
+    ranges.forEach((range) => {
+      result += safeCurrent.slice(last, range.start);
+      const rawValue = values == null ? void 0 : values[range.name];
+      const replacement = rawValue !== void 0 && rawValue !== null && String(rawValue).length ? String(rawValue) : `<<${range.name}>>`;
+      result += replacement;
+      last = range.end;
+    });
+    result += safeCurrent.slice(last);
     return result;
   };
   const syncFromText = () => {
@@ -16889,36 +16988,33 @@ function App() {
       const subjectTemplate = selectedTemplate.subject[templateLanguage] || "";
       const bodyTemplate = selectedTemplate.body[templateLanguage] || "";
       setVariables(initialVars);
-      const replaceWithInitials = (text) => {
-        let result = text;
-        Object.entries(initialVars).forEach(([varName, value]) => {
-          const regex = new RegExp(`<<${varName}>>`, "g");
-          result = result.replace(regex, value || `<<${varName}>>`);
-        });
-        return result;
-      };
-      setFinalSubject(replaceWithInitials(subjectTemplate));
-      setFinalBody(replaceWithInitials(bodyTemplate));
+      setFinalSubject(replaceVariablesWithValues(subjectTemplate, initialVars));
+      setFinalBody(replaceVariablesWithValues(bodyTemplate, initialVars));
+      manualEditRef.current = { subject: false, body: false };
     } else {
       setVariables({});
       setFinalSubject("");
       setFinalBody("");
+      manualEditRef.current = { subject: false, body: false };
     }
   }, [selectedTemplate, templateLanguage, interfaceLanguage]);
   reactExports.useEffect(() => {
-    if (selectedTemplate) {
-      const subjectTemplate = selectedTemplate.subject[templateLanguage] || "";
-      const bodyTemplate = selectedTemplate.body[templateLanguage] || "";
-      if (finalSubject === subjectTemplate || finalSubject.includes("<<")) {
-        const subjectWithVars = replaceVariables(subjectTemplate);
-        setFinalSubject(subjectWithVars);
-      }
-      if (finalBody === bodyTemplate || finalBody.includes("<<")) {
-        const bodyWithVars = replaceVariables(bodyTemplate);
-        setFinalBody(bodyWithVars);
+    if (!selectedTemplate) return;
+    const subjectTemplate = selectedTemplate.subject[templateLanguage] || "";
+    const bodyTemplate = selectedTemplate.body[templateLanguage] || "";
+    if (!manualEditRef.current.subject) {
+      const updatedSubject = applyVariablesToCurrentText(finalSubject, subjectTemplate, variables);
+      if (typeof updatedSubject === "string" && updatedSubject !== finalSubject) {
+        setFinalSubject(updatedSubject);
       }
     }
-  }, [variables, selectedTemplate, templateLanguage]);
+    if (!manualEditRef.current.body) {
+      const updatedBody = applyVariablesToCurrentText(finalBody, bodyTemplate, variables);
+      if (typeof updatedBody === "string" && updatedBody !== finalBody) {
+        setFinalBody(updatedBody);
+      }
+    }
+  }, [variables, selectedTemplate, templateLanguage, finalSubject, finalBody]);
   const copyToClipboard = async (type = "all") => {
     let content = "";
     switch (type) {
@@ -17616,6 +17712,7 @@ ${finalBody}`).then(() => {
                           const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || "");
                           setFinalSubject(subjectWithVars);
                           setFinalBody(bodyWithVars);
+                          manualEditRef.current = { subject: false, body: false };
                         },
                         size: "sm",
                         className: "shadow-soft",
@@ -17653,7 +17750,13 @@ ${finalBody}`).then(() => {
                     HighlightingEditor,
                     {
                       value: finalSubject,
-                      onChange: (e) => setFinalSubject(e.target.value),
+                      onChange: (e) => {
+                        manualEditRef.current.subject = true;
+                        setFinalSubject(e.target.value);
+                      },
+                      onBlur: () => {
+                        manualEditRef.current.subject = false;
+                      },
                       variables,
                       placeholder: getPlaceholderText(),
                       minHeight: "60px",
@@ -17672,7 +17775,13 @@ ${finalBody}`).then(() => {
                     HighlightingEditor,
                     {
                       value: finalBody,
-                      onChange: (e) => setFinalBody(e.target.value),
+                      onChange: (e) => {
+                        manualEditRef.current.body = true;
+                        setFinalBody(e.target.value);
+                      },
+                      onBlur: () => {
+                        manualEditRef.current.body = false;
+                      },
                       variables,
                       placeholder: getPlaceholderText(),
                       minHeight: "250px",
@@ -18705,4 +18814,4 @@ const isVarsOnly = params.get("varsOnly") === "1";
 clientExports.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { children: isVarsOnly ? /* @__PURE__ */ jsxRuntimeExports.jsx(VariablesPage, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) })
 );
-//# sourceMappingURL=main-DxQpo18a.js.map
+//# sourceMappingURL=main-weZvFr_1.js.map
