@@ -49,6 +49,20 @@ const customEditorStyles = `
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     letter-spacing: 0.005em;
   }
+
+  /* Subtle, non-blocking underline cues for variable regions in the editor overlay */
+  mark.var-highlight {
+    background: transparent !important;
+    color: transparent !important; /* keep caret/text from being doubled visually */
+    border-bottom: 2px dotted rgba(31, 138, 153, 0.5); /* default cue color */
+    padding: 0 0 0.05em 0; /* minimal padding for consistent underline */
+  }
+  mark.var-highlight.filled {
+    border-bottom-color: rgba(31, 138, 153, 0.9); /* stronger teal when filled */
+  }
+  mark.var-highlight.empty {
+    border-bottom-color: rgba(156, 163, 175, 0.8); /* gray when empty */
+  }
   
   /* Scrollbar always visible */
   [data-slot="scroll-area-scrollbar"] {
@@ -2396,7 +2410,7 @@ function App() {
                         placeholder={getPlaceholderText()}
                         minHeight="60px"
                         templateOriginal={selectedTemplate?.subject?.[templateLanguage] || ''}
-                        showHighlights={false}
+                        showHighlights={true}
                       />
 
                     </div>
@@ -2415,7 +2429,7 @@ function App() {
                         placeholder={getPlaceholderText()}
                         minHeight="250px"
                         templateOriginal={selectedTemplate?.body?.[templateLanguage] || ''}
-                        showHighlights={false}
+                        showHighlights={true}
                       />
 
                     </div>

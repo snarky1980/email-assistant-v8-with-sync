@@ -149,10 +149,11 @@ const HighlightingEditor = ({
       {showHighlights && (
         <div
           ref={overlayRef}
-          className="absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-hidden rounded-[12px] bg-[#f9fdfd]"
+          className="absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-hidden rounded-[12px]"
           style={{ 
             minHeight,
             fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+            background: 'transparent',
             color: 'transparent',
             whiteSpace: 'pre-wrap',
             wordWrap: 'break-word'
