@@ -1518,16 +1518,23 @@ function App() {
           initialVars[varName] = varInfo.example || ''
         }
       })
-      
-      // Set the template text with <<VarName>> placeholders initially
-      // The HighlightingEditor will show variable values through overlay highlighting
+
+      // Compute templates for current language
       const subjectTemplate = selectedTemplate.subject[templateLanguage] || ''
       const bodyTemplate = selectedTemplate.body[templateLanguage] || ''
-      
-      // Start with template placeholders - users can edit from there
+
+      // A2: Auto-fill with default/example values immediately
       setVariables(initialVars)
-      setFinalSubject(subjectTemplate)
-      setFinalBody(bodyTemplate)
+      const replaceWithInitials = (text) => {
+        let result = text
+        Object.entries(initialVars).forEach(([varName, value]) => {
+          const regex = new RegExp(`<<${varName}>>`, 'g')
+          result = result.replace(regex, value || `<<${varName}>>`)
+        })
+        return result
+      }
+      setFinalSubject(replaceWithInitials(subjectTemplate))
+      setFinalBody(replaceWithInitials(bodyTemplate))
     } else {
       // No template selected - clear editors
       setVariables({})
@@ -2389,7 +2396,7 @@ function App() {
                         placeholder={getPlaceholderText()}
                         minHeight="60px"
                         templateOriginal={selectedTemplate?.subject?.[templateLanguage] || ''}
-                        showHighlights={true}
+                        showHighlights={false}
                       />
 
                     </div>
@@ -2408,7 +2415,7 @@ function App() {
                         placeholder={getPlaceholderText()}
                         minHeight="250px"
                         templateOriginal={selectedTemplate?.body?.[templateLanguage] || ''}
-                        showHighlights={true}
+                        showHighlights={false}
                       />
 
                     </div>

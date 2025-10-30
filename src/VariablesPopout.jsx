@@ -55,6 +55,16 @@ export default function VariablesPopout({
     }
   }, [])
 
+  // Request one-time sync from main window on mount so popout reflects current editor content
+  useEffect(() => {
+    if (!channelRef.current) return
+    try {
+      channelRef.current.postMessage({ type: 'syncFromText' })
+    } catch (e) {
+      console.error('Failed to request initial syncFromText:', e)
+    }
+  }, [])
+
   // Sync variable changes to main window
   const updateVariable = (varName, value) => {
     const newVariables = { ...variables, [varName]: value }
