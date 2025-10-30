@@ -9169,18 +9169,93 @@ const HighlightingEditor = ({
   const textareaRef = reactExports.useRef(null);
   const overlayRef = reactExports.useRef(null);
   const [isFocused, setIsFocused] = reactExports.useState(false);
+  const escapeHtml = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#x27;");
+  const parseTemplate = (tpl) => {
+    const parts = [];
+    if (!tpl) return parts;
+    const re = /<<([^>]+)>>/g;
+    let lastIndex = 0;
+    let m;
+    while ((m = re.exec(tpl)) !== null) {
+      if (m.index > lastIndex) {
+        parts.push({ type: "text", value: tpl.slice(lastIndex, m.index) });
+      }
+      parts.push({ type: "var", name: m[1] });
+      lastIndex = re.lastIndex;
+    }
+    if (lastIndex < tpl.length) {
+      parts.push({ type: "text", value: tpl.slice(lastIndex) });
+    }
+    return parts;
+  };
+  const computeVarRanges = (text, tpl, vars) => {
+    if (!text || !tpl) return [];
+    const parts = parseTemplate(tpl);
+    if (parts.length === 0) return [];
+    let cursor = 0;
+    const ranges = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (part.type === "text") {
+        if (!part.value) continue;
+        const idx = text.indexOf(part.value, cursor);
+        if (idx === -1) return [];
+        cursor = idx + part.value.length;
+      } else if (part.type === "var") {
+        const nextText = (() => {
+          for (let j = i + 1; j < parts.length; j++) {
+            if (parts[j].type === "text" && parts[j].value) return parts[j].value;
+          }
+          return null;
+        })();
+        const start = cursor;
+        let end;
+        if (nextText) {
+          const nextIdx = text.indexOf(nextText, start);
+          end = nextIdx === -1 ? text.length : nextIdx;
+        } else {
+          end = text.length;
+        }
+        if (end >= start) {
+          ranges.push({ start, end, name: part.name, value: text.slice(start, end) });
+          cursor = end;
+        }
+      }
+    }
+    return ranges;
+  };
   const createHighlightedHTML = (text) => {
     if (!text || !showHighlights) return "";
-    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
-    html = html.replace(/&lt;&lt;([^&]+)&gt;&gt;/g, (match, varName) => {
-      const varValue = variables[varName] || "";
-      const filled = varValue.trim().length > 0;
-      const className = filled ? "var-highlight filled" : "var-highlight empty";
-      const displayText = filled ? varValue.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : `&lt;&lt;${varName}&gt;&gt;`;
-      return `<mark class="${className}" data-var="${varName}">${displayText}</mark>`;
-    });
-    html = html.replace(/\n/g, "<br>");
-    return html;
+    if (text.includes("<<")) {
+      let html = escapeHtml(text);
+      html = html.replace(/&lt;&lt;([^&]+)&gt;&gt;/g, (match, varName) => {
+        const varValue = variables[varName] || "";
+        const filled = varValue.trim().length > 0;
+        const className = filled ? "var-highlight filled" : "var-highlight empty";
+        const displayText = filled ? escapeHtml(varValue) : `&lt;&lt;${varName}&gt;&gt;`;
+        return `<mark class="${className}" data-var="${varName}">${displayText}</mark>`;
+      });
+      return html.replace(/\n/g, "<br>");
+    }
+    if (templateOriginal && templateOriginal.includes("<<")) {
+      const ranges = computeVarRanges(text, templateOriginal);
+      if (ranges.length) {
+        let out = "";
+        let last = 0;
+        for (const r2 of ranges) {
+          if (r2.start > last) out += escapeHtml(text.slice(last, r2.start));
+          const valEsc = escapeHtml(text.slice(r2.start, r2.end));
+          const varVal = variables[r2.name] || "";
+          const filled = (varVal || "").trim().length > 0;
+          const className = filled ? "var-highlight filled" : "var-highlight empty";
+          out += `<mark class="${className}" data-var="${r2.name}">${valEsc}</mark>`;
+          last = r2.end;
+        }
+        if (last < text.length) out += escapeHtml(text.slice(last));
+        return out.replace(/\n/g, "<br>");
+      }
+    }
+    return escapeHtml(text).replace(/\n/g, "<br>");
   };
   const handleChange = (e) => {
     onChange(e);
@@ -16799,8 +16874,16 @@ function App() {
       const subjectTemplate = selectedTemplate.subject[templateLanguage] || "";
       const bodyTemplate = selectedTemplate.body[templateLanguage] || "";
       setVariables(initialVars);
-      setFinalSubject(subjectTemplate);
-      setFinalBody(bodyTemplate);
+      const replaceWithInitials = (text) => {
+        let result = text;
+        Object.entries(initialVars).forEach(([varName, value]) => {
+          const regex = new RegExp(`<<${varName}>>`, "g");
+          result = result.replace(regex, value || `<<${varName}>>`);
+        });
+        return result;
+      };
+      setFinalSubject(replaceWithInitials(subjectTemplate));
+      setFinalBody(replaceWithInitials(bodyTemplate));
     } else {
       setVariables({});
       setFinalSubject("");
@@ -17560,7 +17643,7 @@ ${finalBody}`).then(() => {
                       placeholder: getPlaceholderText(),
                       minHeight: "60px",
                       templateOriginal: ((_b = selectedTemplate == null ? void 0 : selectedTemplate.subject) == null ? void 0 : _b[templateLanguage]) || "",
-                      showHighlights: true
+                      showHighlights: false
                     },
                     `subject-${selectedTemplate == null ? void 0 : selectedTemplate.id}-${Object.keys(variables).length}`
                   )
@@ -17579,7 +17662,7 @@ ${finalBody}`).then(() => {
                       placeholder: getPlaceholderText(),
                       minHeight: "250px",
                       templateOriginal: ((_c = selectedTemplate == null ? void 0 : selectedTemplate.body) == null ? void 0 : _c[templateLanguage]) || "",
-                      showHighlights: true
+                      showHighlights: false
                     },
                     `body-${selectedTemplate == null ? void 0 : selectedTemplate.id}-${Object.keys(variables).length}`
                   )
@@ -18276,6 +18359,14 @@ function VariablesPopout({
       console.error("BroadcastChannel not available:", e);
     }
   }, []);
+  reactExports.useEffect(() => {
+    if (!channelRef.current) return;
+    try {
+      channelRef.current.postMessage({ type: "syncFromText" });
+    } catch (e) {
+      console.error("Failed to request initial syncFromText:", e);
+    }
+  }, []);
   const updateVariable = (varName, value) => {
     const newVariables = { ...variables, [varName]: value };
     setVariables(newVariables);
@@ -18599,4 +18690,4 @@ const isVarsOnly = params.get("varsOnly") === "1";
 clientExports.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { children: isVarsOnly ? /* @__PURE__ */ jsxRuntimeExports.jsx(VariablesPage, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) })
 );
-//# sourceMappingURL=main-Br5iHyZw.js.map
+//# sourceMappingURL=main-CHu_Ccjr.js.map
