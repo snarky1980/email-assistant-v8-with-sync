@@ -4,6 +4,8 @@ import React, { useRef, useEffect, useState } from 'react'
 const HighlightingEditor = ({
   value,
   onChange,
+  onFocus,
+  onBlur,
   variables = {},
   placeholder = '',
   minHeight = '150px',
@@ -89,11 +91,12 @@ const HighlightingEditor = ({
     if (text.includes('<<')) {
       let html = escapeHtml(text)
       html = html.replace(/&lt;&lt;([^&]+)&gt;&gt;/g, (match, varName) => {
+        // IMPORTANT: keep the placeholder text length for perfect alignment
         const varValue = variables[varName] || ''
         const filled = varValue.trim().length > 0
         const className = filled ? 'var-highlight filled' : 'var-highlight empty'
-        const displayText = filled ? escapeHtml(varValue) : `&lt;&lt;${varName}&gt;&gt;`
-        return `<mark class="${className}" data-var="${varName}">${displayText}</mark>`
+        const displayText = `&lt;&lt;${varName}&gt;&gt;`
+        return `<mark class=\"${className}\" data-var=\"${varName}\">${displayText}</mark>`
       })
       return html.replace(/\n/g, '<br>')
     }
@@ -128,12 +131,14 @@ const HighlightingEditor = ({
     onChange(e)
   }
 
-  const handleFocus = () => {
+  const handleFocus = (e) => {
     setIsFocused(true)
+    onFocus?.(e)
   }
 
-  const handleBlur = () => {
+  const handleBlur = (e) => {
     setIsFocused(false)
+    onBlur?.(e)
   }
 
   // Update overlay when value or variables change
@@ -143,13 +148,28 @@ const HighlightingEditor = ({
     }
   }, [value, variables, showHighlights])
 
+  // Keep overlay scroll aligned with textarea scroll
+  useEffect(() => {
+    const ta = textareaRef.current
+    const ov = overlayRef.current
+    if (!ta || !ov) return
+    const syncScroll = () => {
+      ov.scrollTop = ta.scrollTop
+      ov.scrollLeft = ta.scrollLeft
+    }
+    ta.addEventListener('scroll', syncScroll)
+    // initial sync
+    syncScroll()
+    return () => ta.removeEventListener('scroll', syncScroll)
+  }, [])
+
   return (
     <div className="relative">
       {/* Background overlay for highlighting */}
       {showHighlights && (
         <div
           ref={overlayRef}
-          className="absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-hidden rounded-[12px]"
+          className="absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-auto rounded-[12px]"
           style={{ 
             minHeight,
             fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",

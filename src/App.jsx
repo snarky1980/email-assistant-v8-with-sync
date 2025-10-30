@@ -413,6 +413,7 @@ function App() {
   const varsChannelRef = useRef(null)
   const varsSenderIdRef = useRef(Math.random().toString(36).slice(2))
   const varsRemoteUpdateRef = useRef(false)
+  const manualEditRef = useRef({ subject: false, body: false })
   const pendingTemplateIdRef = useRef(null)
   const canUseBC = typeof window !== 'undefined' && 'BroadcastChannel' in window
   // Focus → outline matching marks in subject/body; blur → fade out
@@ -1373,13 +1374,107 @@ function App() {
     setFavorites(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  // Replace variables in text
-  const replaceVariables = (text) => {
+  const replaceVariablesWithValues = (text, values) => {
+    if (!text) return ''
     let result = text
-    Object.entries(variables).forEach(([varName, value]) => {
+    Object.entries(values || {}).forEach(([varName, value]) => {
+      const replacement = value !== undefined && value !== null && String(value).length
+        ? String(value)
+        : `<<${varName}>>`
       const regex = new RegExp(`<<${varName}>>`, 'g')
-      result = result.replace(regex, value || `<<${varName}>>`)
+      result = result.replace(regex, replacement)
     })
+    return result
+  }
+
+  // Replace variables in text using current state
+  const replaceVariables = (text) => replaceVariablesWithValues(text, variables)
+
+  const parseTemplateStructure = (tpl) => {
+    if (!tpl) return []
+    const parts = []
+    const regex = /<<([^>]+)>>/g
+    let lastIndex = 0
+    let match
+    while ((match = regex.exec(tpl)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', value: tpl.slice(lastIndex, match.index) })
+      }
+      parts.push({ type: 'var', name: match[1] })
+      lastIndex = regex.lastIndex
+    }
+    if (lastIndex < tpl.length) {
+      parts.push({ type: 'text', value: tpl.slice(lastIndex) })
+    }
+    return parts
+  }
+
+  const computeVarRangesInText = (text, tpl) => {
+    if (!tpl || typeof text !== 'string') return []
+    const parts = parseTemplateStructure(tpl)
+    if (!parts.length) return []
+    let cursor = 0
+    const ranges = []
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      if (part.type === 'text') {
+        if (!part.value) continue
+        const idx = text.indexOf(part.value, cursor)
+        if (idx === -1) return []
+        cursor = idx + part.value.length
+      } else if (part.type === 'var') {
+        const nextText = (() => {
+          for (let j = i + 1; j < parts.length; j++) {
+            if (parts[j].type === 'text' && parts[j].value) return parts[j].value
+          }
+          return null
+        })()
+        const start = cursor
+        let end
+        if (nextText) {
+          const nextIdx = text.indexOf(nextText, start)
+          end = nextIdx === -1 ? text.length : nextIdx
+        } else {
+          end = text.length
+        }
+        if (end >= start) {
+          ranges.push({ start, end, name: part.name })
+          cursor = end
+        }
+      }
+    }
+    return ranges
+  }
+
+  const applyVariablesToCurrentText = (currentText, templateText, values) => {
+    if (!templateText) return currentText ?? ''
+    const safeCurrent = typeof currentText === 'string' ? currentText : ''
+    const templateParts = parseTemplateStructure(templateText)
+    const varCount = templateParts.filter(p => p.type === 'var').length
+    if (varCount === 0) return safeCurrent
+
+    if (!safeCurrent.length) {
+      return replaceVariablesWithValues(templateText, values)
+    }
+
+    const ranges = computeVarRangesInText(safeCurrent, templateText)
+    if (ranges.length !== varCount) {
+      // Unable to map confidently; preserve existing text
+      return safeCurrent
+    }
+
+    let result = ''
+    let last = 0
+    ranges.forEach(range => {
+      result += safeCurrent.slice(last, range.start)
+      const rawValue = values?.[range.name]
+      const replacement = rawValue !== undefined && rawValue !== null && String(rawValue).length
+        ? String(rawValue)
+        : `<<${range.name}>>`
+      result += replacement
+      last = range.end
+    })
+    result += safeCurrent.slice(last)
     return result
   }
 
@@ -1539,45 +1634,39 @@ function App() {
 
       // A2: Auto-fill with default/example values immediately
       setVariables(initialVars)
-      const replaceWithInitials = (text) => {
-        let result = text
-        Object.entries(initialVars).forEach(([varName, value]) => {
-          const regex = new RegExp(`<<${varName}>>`, 'g')
-          result = result.replace(regex, value || `<<${varName}>>`)
-        })
-        return result
-      }
-      setFinalSubject(replaceWithInitials(subjectTemplate))
-      setFinalBody(replaceWithInitials(bodyTemplate))
+      setFinalSubject(replaceVariablesWithValues(subjectTemplate, initialVars))
+      setFinalBody(replaceVariablesWithValues(bodyTemplate, initialVars))
+      manualEditRef.current = { subject: false, body: false }
     } else {
       // No template selected - clear editors
       setVariables({})
       setFinalSubject('')
       setFinalBody('')
+      manualEditRef.current = { subject: false, body: false }
     }
   }, [selectedTemplate, templateLanguage, interfaceLanguage])
 
-  // Update final versions when variables change - but only update template placeholders, not user edits
+  // Update final text when variables change (e.g., via popout) without overwriting active manual edits
   useEffect(() => {
-    if (selectedTemplate) {
-      // Only replace variables if the text still contains placeholders
-      // This prevents overwriting user edits
-      const subjectTemplate = selectedTemplate.subject[templateLanguage] || ''
-      const bodyTemplate = selectedTemplate.body[templateLanguage] || ''
-      
-      // For subject: only update if it's still the template or contains placeholders
-      if (finalSubject === subjectTemplate || finalSubject.includes('<<')) {
-        const subjectWithVars = replaceVariables(subjectTemplate)
-        setFinalSubject(subjectWithVars)
-      }
-      
-      // For body: only update if it's still the template or contains placeholders  
-      if (finalBody === bodyTemplate || finalBody.includes('<<')) {
-        const bodyWithVars = replaceVariables(bodyTemplate)
-        setFinalBody(bodyWithVars)
+    if (!selectedTemplate) return
+
+    const subjectTemplate = selectedTemplate.subject[templateLanguage] || ''
+    const bodyTemplate = selectedTemplate.body[templateLanguage] || ''
+
+    if (!manualEditRef.current.subject) {
+      const updatedSubject = applyVariablesToCurrentText(finalSubject, subjectTemplate, variables)
+      if (typeof updatedSubject === 'string' && updatedSubject !== finalSubject) {
+        setFinalSubject(updatedSubject)
       }
     }
-  }, [variables, selectedTemplate, templateLanguage])
+
+    if (!manualEditRef.current.body) {
+      const updatedBody = applyVariablesToCurrentText(finalBody, bodyTemplate, variables)
+      if (typeof updatedBody === 'string' && updatedBody !== finalBody) {
+        setFinalBody(updatedBody)
+      }
+    }
+  }, [variables, selectedTemplate, templateLanguage, finalSubject, finalBody])
 
   /**
    * GRANULAR COPY FUNCTION
@@ -2366,6 +2455,7 @@ function App() {
                                 const bodyWithVars = replaceVariables(selectedTemplate.body[templateLanguage] || '')
                                 setFinalSubject(subjectWithVars)
                                 setFinalBody(bodyWithVars)
+                                manualEditRef.current = { subject: false, body: false }
                               }}
                               size="sm"
                               className="shadow-soft"
@@ -2405,7 +2495,13 @@ function App() {
                       <HighlightingEditor
                         key={`subject-${selectedTemplate?.id}-${Object.keys(variables).length}`}
                         value={finalSubject}
-                        onChange={(e) => setFinalSubject(e.target.value)}
+                        onChange={(e) => {
+                          manualEditRef.current.subject = true
+                          setFinalSubject(e.target.value)
+                        }}
+                        onBlur={() => {
+                          manualEditRef.current.subject = false
+                        }}
                         variables={variables}
                         placeholder={getPlaceholderText()}
                         minHeight="60px"
@@ -2424,7 +2520,13 @@ function App() {
                       <HighlightingEditor
                         key={`body-${selectedTemplate?.id}-${Object.keys(variables).length}`}
                         value={finalBody}
-                        onChange={(e) => setFinalBody(e.target.value)}
+                        onChange={(e) => {
+                          manualEditRef.current.body = true
+                          setFinalBody(e.target.value)
+                        }}
+                        onBlur={() => {
+                          manualEditRef.current.body = false
+                        }}
                         variables={variables}
                         placeholder={getPlaceholderText()}
                         minHeight="250px"
