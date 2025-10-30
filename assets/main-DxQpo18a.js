@@ -9276,10 +9276,11 @@ const HighlightingEditor = ({
       "div",
       {
         ref: overlayRef,
-        className: "absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-hidden rounded-[12px] bg-[#f9fdfd]",
+        className: "absolute inset-0 pointer-events-none z-10 px-4 py-4 text-[16px] leading-[1.7] tracking-[0.01em] overflow-hidden rounded-[12px]",
         style: {
           minHeight,
           fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+          background: "transparent",
           color: "transparent",
           whiteSpace: "pre-wrap",
           wordWrap: "break-word"
@@ -15548,6 +15549,20 @@ const customEditorStyles = `
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     letter-spacing: 0.005em;
   }
+
+  /* Subtle, non-blocking underline cues for variable regions in the editor overlay */
+  mark.var-highlight {
+    background: transparent !important;
+    color: transparent !important; /* keep caret/text from being doubled visually */
+    border-bottom: 2px dotted rgba(31, 138, 153, 0.5); /* default cue color */
+    padding: 0 0 0.05em 0; /* minimal padding for consistent underline */
+  }
+  mark.var-highlight.filled {
+    border-bottom-color: rgba(31, 138, 153, 0.9); /* stronger teal when filled */
+  }
+  mark.var-highlight.empty {
+    border-bottom-color: rgba(156, 163, 175, 0.8); /* gray when empty */
+  }
   
   /* Scrollbar always visible */
   [data-slot="scroll-area-scrollbar"] {
@@ -17643,7 +17658,7 @@ ${finalBody}`).then(() => {
                       placeholder: getPlaceholderText(),
                       minHeight: "60px",
                       templateOriginal: ((_b = selectedTemplate == null ? void 0 : selectedTemplate.subject) == null ? void 0 : _b[templateLanguage]) || "",
-                      showHighlights: false
+                      showHighlights: true
                     },
                     `subject-${selectedTemplate == null ? void 0 : selectedTemplate.id}-${Object.keys(variables).length}`
                   )
@@ -17662,7 +17677,7 @@ ${finalBody}`).then(() => {
                       placeholder: getPlaceholderText(),
                       minHeight: "250px",
                       templateOriginal: ((_c = selectedTemplate == null ? void 0 : selectedTemplate.body) == null ? void 0 : _c[templateLanguage]) || "",
-                      showHighlights: false
+                      showHighlights: true
                     },
                     `body-${selectedTemplate == null ? void 0 : selectedTemplate.id}-${Object.keys(variables).length}`
                   )
@@ -18690,4 +18705,4 @@ const isVarsOnly = params.get("varsOnly") === "1";
 clientExports.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { children: isVarsOnly ? /* @__PURE__ */ jsxRuntimeExports.jsx(VariablesPage, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) })
 );
-//# sourceMappingURL=main-CHu_Ccjr.js.map
+//# sourceMappingURL=main-DxQpo18a.js.map
